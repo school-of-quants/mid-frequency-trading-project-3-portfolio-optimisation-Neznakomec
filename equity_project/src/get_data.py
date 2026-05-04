@@ -1,3 +1,4 @@
+import os
 import warnings
 from pathlib import Path
 
@@ -84,7 +85,12 @@ def get_label(train_data):
     Returns:
         pd.DataFrame: target dataset
     """
-    target = train_data.Close.apply(three_barrier)
+    from pandarallel import pandarallel
+    pandarallel.initialize()
+    target = train_data.Close.parallel_apply(three_barrier)
+
+    # target = train_data.Close.apply(three_barrier)
+
     return target
 
 
@@ -205,6 +211,7 @@ def get_data():
         (X.index.get_level_values("Date") <= TRAIN_END_DATE)
         & (X.index.get_level_values("Date") >= TRAIN_START_DATE)
     ]
+    os.makedirs(project_path.as_posix() + "/data/processed/", exist_ok=True)
     X_train.to_parquet(project_path.as_posix() + "/data/processed/X_train.parquet")
 
     y_train = y.to_frame()[
