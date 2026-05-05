@@ -2,9 +2,11 @@ import os
 import warnings
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import yfinance as yf
 
+from equity_project.src.qpi import QP
 from equity_project.src.utils import load_config, three_barrier
 
 warnings.filterwarnings("ignore")
@@ -24,6 +26,8 @@ def generate_features(data):
     X = data.copy()
 
     close_col = "Close"
+    high_col = "High"
+    low_col = "Low"
 
     # dealing with multiindex
     tickers = X[close_col].columns
@@ -64,6 +68,11 @@ def generate_features(data):
         X[close_col].rolling(252).std()
     ) / X[close_col].rolling(252).mean()
 
+    for ticker in tickers:
+        X[[("qpi", ticker)]] = (
+            QP(target_high=X[(high_col, ticker)].to_numpy(), target_close=X[(close_col, ticker)].to_numpy(), target_low=X[(low_col, ticker)].to_numpy())
+        )
+
     # drop unnecessary сols
     X.drop(columns=["Close", "High", "Low", "Open", "Volume"], inplace=True)
 
@@ -87,7 +96,7 @@ def get_label(train_data):
     """
     from pandarallel import pandarallel
     pandarallel.initialize()
-    target = train_data.Close.parallel_apply(three_barrier)
+    target = (train_data.Close.diff(5) > 0).astype(int) #parallel_apply(three_barrier)
 
     # target = train_data.Close.apply(three_barrier)
 
@@ -133,8 +142,6 @@ def get_raw_data():
     for trash_ticker in ("DEC", "USBC", "CPWR", "TNB", "APP", "BMC", "SBNY"):
         first_appearance_dict.pop(trash_ticker)
 
-    TICKERS = list(first_appearance_dict.keys())
-
     data = pd.read_parquet(project_path.as_posix() + "/data/raw/all_data.parquet")
 
     data.index = pd.to_datetime(data.index)
@@ -176,55 +183,55 @@ def get_data():
         X = X[~condition_to_drop]
 
     idx = pd.IndexSlice
-    data = data.loc[:, idx[:, X.index.get_level_values("Ticker").unique()]]
-    # y = y.stack(level=0).loc[X.index]
-    # y.name = "target"
+    # data = data.loc[:, idx[:, X.index.get_level_values("Ticker").unique()]]
+    y = y.stack(level=0).loc[X.index]
+    y.name = "target"
 
     # разбиваем исходные данные на трейн и бэктест
-    train_data = data[
-        (data.index.get_level_values("Date") <= TRAIN_END_DATE)
-        & (data.index.get_level_values("Date") >= TRAIN_START_DATE)
-    ]
-    train_data.to_parquet(project_path.as_posix() + "/data/raw/train_data.parquet")
-
-    backtest_data = data[
-        (data.index.get_level_values("Date") <= BACKTEST_END_DATE)
-        & (data.index.get_level_values("Date") >= BACKTEST_START_DATE)
-    ]
-
-    backtest_data.to_parquet(
-        project_path.as_posix() + "/data/raw/backtest_data.parquet", engine="pyarrow"
-    )
+    # train_data = data[
+    #     (data.index.get_level_values("Date") <= TRAIN_END_DATE)
+    #     & (data.index.get_level_values("Date") >= TRAIN_START_DATE)
+    # ]
+    # train_data.to_parquet(project_path.as_posix() + "/data/raw/train_data.parquet")
+    #
+    # backtest_data = data[
+    #     (data.index.get_level_values("Date") <= BACKTEST_END_DATE)
+    #     & (data.index.get_level_values("Date") >= BACKTEST_START_DATE)
+    # ]
+    #
+    # backtest_data.to_parquet(
+    #     project_path.as_posix() + "/data/raw/backtest_data.parquet", engine="pyarrow"
+    # )
 
     # разбиваем фичасеты и таргеты ML модели на трейн и бэктест
-    # X_train = X[
-    #     (X.index.get_level_values("Date") <= TRAIN_END_DATE)
-    #     & (X.index.get_level_values("Date") >= TRAIN_START_DATE)
-    # ]
-    # os.makedirs(project_path.as_posix() + "/data/processed/", exist_ok=True)
-    # X_train.to_parquet(project_path.as_posix() + "/data/processed/X_train.parquet")
+    X_train = X[
+        (X.index.get_level_values("Date") <= TRAIN_END_DATE)
+        & (X.index.get_level_values("Date") >= TRAIN_START_DATE)
+    ]
+    os.makedirs(project_path.as_posix() + "/data/processed/", exist_ok=True)
+    X_train.to_parquet(project_path.as_posix() + "/data/processed/X_train.parquet")
 
-    # y_train = y.to_frame()[
-    #     (y.index.get_level_values("Date") <= TRAIN_END_DATE)
-    #     & (y.index.get_level_values("Date") >= TRAIN_START_DATE)
-    # ]
-    # y_train.to_parquet(project_path.as_posix() + "/data/processed/y_train.parquet")
+    y_train = y.to_frame()[
+        (y.index.get_level_values("Date") <= TRAIN_END_DATE)
+        & (y.index.get_level_values("Date") >= TRAIN_START_DATE)
+    ]
+    y_train.to_parquet(project_path.as_posix() + "/data/processed/y_train.parquet")
 
-    # X_backtest = X[
-    #     (X.index.get_level_values("Date") <= BACKTEST_END_DATE)
-    #     & (X.index.get_level_values("Date") >= BACKTEST_START_DATE)
-    # ]
-    # X_backtest.to_parquet(
-    #     project_path.as_posix() + "/data/processed/X_backtest.parquet"
-    # )
+    X_backtest = X[
+        (X.index.get_level_values("Date") <= BACKTEST_END_DATE)
+        & (X.index.get_level_values("Date") >= BACKTEST_START_DATE)
+    ]
+    X_backtest.to_parquet(
+        project_path.as_posix() + "/data/processed/X_backtest.parquet"
+    )
 
-    # y_backtest = y.to_frame()[
-    #     (y.index.get_level_values("Date") <= BACKTEST_END_DATE)
-    #     & (y.index.get_level_values("Date") >= BACKTEST_START_DATE)
-    # ]
-    # y_backtest.to_parquet(
-    #     project_path.as_posix() + "/data/processed/y_backtest.parquet"
-    # )
+    y_backtest = y.to_frame()[
+        (y.index.get_level_values("Date") <= BACKTEST_END_DATE)
+        & (y.index.get_level_values("Date") >= BACKTEST_START_DATE)
+    ]
+    y_backtest.to_parquet(
+        project_path.as_posix() + "/data/processed/y_backtest.parquet"
+    )
 
 
 if __name__ == "__main__":

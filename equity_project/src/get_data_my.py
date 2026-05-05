@@ -133,12 +133,11 @@ def get_raw_data():
     for trash_ticker in ("DEC", "USBC", "CPWR", "TNB", "APP", "BMC", "SBNY"):
         first_appearance_dict.pop(trash_ticker)
 
-    train_data = pd.read_parquet(project_path.as_posix() + "/data/raw/train_data.parquet")
-    backtest_data = pd.read_parquet(project_path.as_posix() + "/data/raw/backtest_data.parquet", engine="pyarrow")
-
+    # train_data = pd.read_parquet(project_path.as_posix() + "/data/raw/train_data.parquet")
+    # backtest_data = pd.read_parquet(project_path.as_posix() + "/data/raw/backtest_data.parquet", engine="pyarrow")
+    data = pd.read_parquet(project_path.as_posix() + "/data/raw/all_data.parquet", engine="pyarrow")
     return (
-        train_data,
-        backtest_data,
+        data,
         first_appearance_dict,
     )
 
@@ -148,12 +147,11 @@ def get_data():
     cfg = load_config(project_path.parent.as_posix() + "/config.yaml")
 
     (
-        train_data,
-        backtest_data,
+        data,
         first_appearance_dict,
     ) = get_raw_data()
 
-    data = pd.concat([train_data, backtest_data], axis=0)
+    # data = pd.concat([train_data, backtest_data], axis=0)
 
     # генерируем фичи для ML модели
     X = generate_features(data)

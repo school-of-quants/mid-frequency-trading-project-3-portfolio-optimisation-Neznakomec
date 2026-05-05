@@ -22,7 +22,7 @@ def generate_weights(preds):
     preds_unstack = preds.unstack(level=1)
 
     # считаем разницу между вероятностью сигнала на лонг и вероятностью шорт сигнала
-    long_prob_minus_short_prob = preds_unstack[2] - preds_unstack[0]
+    long_prob_minus_short_prob = preds_unstack[0] - preds_unstack[1]
 
     # считаем ранги данного фактора. У бумаги с наибольшим фактором самый большой ранг
     signals_rank = long_prob_minus_short_prob.rank(axis=1, ascending=False, pct=False)
