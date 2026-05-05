@@ -34,6 +34,7 @@ equity_project/
 ├── main.py                     # Основной файл проекта, запускающий цикл стратегии от обучения до оценки метрик
 ├── config.yaml                 # Конфиг с требованиями к бэктесту
 ├── pyproject.toml              # Конфиг проекта, нужен нам для Poetry
+├──Algorithmic_Trading_Strategy_using_Unsupervised_Learning.ipynb # небольшое исследование по кластеризации акций из индекса S&P 500
 │
 └── README.md                   # Файл, который ты сейчас читаешь
 ```
