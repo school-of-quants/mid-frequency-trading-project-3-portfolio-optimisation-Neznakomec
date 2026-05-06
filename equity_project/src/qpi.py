@@ -12,6 +12,15 @@ def MyPercentRankAnalog(target_value, target_array):
 
 # @jit(nopython=True)
 def PercentRank(target_value, target_array):
+    '''
+    Percent Rank indicator
+    Args:
+        target_value: value
+        target_array: array of value
+
+    Returns:
+        percent rank of 'target_value' inside target_array
+    '''
     n = len(target_array)
     sorted_indices = np.argsort(target_array)
     sorted_array = target_array[sorted_indices]
