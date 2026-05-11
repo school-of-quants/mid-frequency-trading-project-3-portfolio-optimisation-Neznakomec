@@ -6,6 +6,7 @@ from pathlib import Path
 import pandas as pd
 import yfinance as yf
 
+from equity_project.src.qpi import QP
 from equity_project.src.utils import load_config, three_barrier
 
 warnings.filterwarnings("ignore")
@@ -25,6 +26,8 @@ def generate_features(data):
     X = data.copy()
 
     close_col = "Close"
+    high_col = "High"
+    low_col = "Low"
 
     # dealing with multiindex
     tickers = X[close_col].columns
@@ -65,6 +68,11 @@ def generate_features(data):
         X[close_col].rolling(252).std()
     ) / X[close_col].rolling(252).mean()
 
+    for ticker in tickers:
+        X[[("qpi", ticker)]] = (
+            QP(target_high=X[(high_col, ticker)].to_numpy(), target_close=X[(close_col, ticker)].to_numpy(), target_low=X[(low_col, ticker)].to_numpy())
+        )
+
     # drop unnecessary сols
     X.drop(columns=["Close", "High", "Low", "Open", "Volume"], inplace=True)
 
@@ -88,10 +96,9 @@ def get_label(train_data):
     """
     # from pandarallel import pandarallel
     # pandarallel.initialize()
-    # target = train_data.Close.parallel_apply(three_barrier)
+    target = (train_data.Close.diff(-30) > 0).astype(int) #parallel_apply(three_barrier)
 
     # target = train_data.Close.apply(three_barrier)
-    target = (train_data.Close.diff(5) > 0).astype(int)
 
     return target
 
@@ -135,15 +142,9 @@ def get_raw_data():
     for trash_ticker in ("DEC", "USBC", "CPWR", "TNB", "APP", "BMC", "SBNY"):
         first_appearance_dict.pop(trash_ticker)
 
-    TICKERS = list(first_appearance_dict.keys())
-
-    data = pd.read_parquet(project_path.as_posix() + "/data/raw/all_data.parquet", engine="pyarrow")
+    data = pd.read_parquet(project_path.as_posix() + "/data/raw/all_data.parquet")
     with open(project_path.as_posix() + "/data/raw/first_appearance_dict.json") as json_file:
         first_appearance_dict = json.load(json_file)
-
-    # yahoo finance иногда выдает фантомные колонки по тикерам с неполными данными
-    if "Adj Close" in data.columns:
-        data.drop(columns="Adj Close", inplace=True)
 
     data.index = pd.to_datetime(data.index)
     data = data.astype(float)
@@ -177,14 +178,14 @@ def get_data():
     BACKTEST_END_DATE = cfg["backtest_end_date"]
 
     # для каждого тикера определяем дату первого вхождения в индекс
+    print("start cleaning features matrix")
     for ticker, first_appearance_dt in first_appearance_dict.items():
         condition_to_drop = (X.index.get_level_values("Date") < first_appearance_dt) & (
             X.index.get_level_values("Ticker") == ticker
         )
         X = X[~condition_to_drop]
+    print("features matrix successfully cleaned")
 
-    idx = pd.IndexSlice
-    data = data.loc[:, idx[:, X.index.get_level_values("Ticker").unique()]]
     y = y.stack(level=0).loc[X.index]
     y.name = "target"
 
