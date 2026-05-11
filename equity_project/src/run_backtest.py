@@ -90,6 +90,23 @@ def generate_weights(preds):
     weights = weights.fillna(0)
     return weights
 
+def stabilize_size_for_month(size):
+    """Выравниваем веса акций в портфеле,
+    чтобы они были стабильными с начала по конец каждого месяца
+
+    Args:
+        size (pd.DataFrame): Размеры позиций по каждой акции на каждый день
+
+    Returns:
+        pd.DataFrame: Обновленные веса бумаг в портфеле
+    """
+    # Resample to get the first value of each month
+    monthly_firsts = size.resample('MS').first()
+
+    # Reindex back to the original index and forward fill
+    size_stabilized = monthly_firsts.reindex(size.index, method='ffill')
+
+    return size_stabilized
 
 def run_backtest():
     """
@@ -121,6 +138,7 @@ def run_backtest():
     # избавляемся от полностью пустых колонок котировок
     close = backtest_data.Close.dropna(axis=1, how="all")
     size = generate_weights(preds)
+    size = stabilize_size_for_month(size)
     price = backtest_data.shift(-1).Open[list(set(close.columns) & set(size.columns))]
     close = close[price.columns]
     size = size[price.columns]
