@@ -1,13 +1,65 @@
+import json
 import os
 from pathlib import Path
 
 import joblib
+import numpy as np
 import pandas as pd
 import vectorbt as vbt
 
 from equity_project.src.utils import load_config, save_dict
 
 project_path = Path(__file__).parent.parent
+
+def calculate_ipc_dynamics(weights_df, close_prices, name):
+    """
+    Calculation of IPC dynamics based on a weight matrix.
+
+    Args:
+        weights_df (pd.DataFrame): Weight matrix (Index: Date, Columns: Ticker).
+        close_prices (pd.DataFrame): Close prices of all assets.
+        name (str): Name for saving the file (portfolio or snp500).
+    """
+    print(f"Calculating IPC for {name}...")
+    returns = close_prices.pct_change().dropna(axis=0, how="all")
+    window = 90
+    results = []
+
+    for date in weights_df.index:
+        # Take tickers that have a weight on the current date
+        row_w = weights_df.loc[date]
+        active_tickers = row_w[row_w > 0].index
+
+        # Filter tickers that actually have price data on this date to avoid NaNs
+        active_tickers = close_prices.loc[date, active_tickers].dropna().index
+
+        n = len(active_tickers)
+        if n < 2:
+            continue
+
+        # Slice historical returns for the lookback period
+        start_win = date - pd.Timedelta(days=window)
+        win_ret = returns.loc[start_win:date, active_tickers].fillna(0)
+
+        if win_ret.empty:
+            continue
+
+        # Apply the IPC formula
+        corr_matrix = win_ret.corr().values
+
+        # Calculate sum of all correlations minus the diagonal
+        total_sum = np.sum(corr_matrix)
+        diagonal_sum = np.trace(corr_matrix)
+
+        ipc_val = (total_sum - diagonal_sum) / (n * (n - 1))
+
+        results.append({'Date': date, 'IPC': ipc_val})
+
+    # Final aggregation and metric calculation
+    ipc_df = pd.DataFrame(results).set_index('Date')
+    mean_val = float(ipc_df['IPC'].mean())
+    print(f"Done: {name} IPC mean = {mean_val:.4f}")
+    return mean_val
 
 
 def generate_weights(preds):
@@ -22,7 +74,7 @@ def generate_weights(preds):
     preds_unstack = preds.unstack(level=1)
 
     # считаем разницу между вероятностью сигнала на лонг и вероятностью шорт сигнала
-    long_prob_minus_short_prob = preds_unstack[2] - preds_unstack[0]
+    long_prob_minus_short_prob = preds_unstack[0] - preds_unstack[1]
 
     # считаем ранги данного фактора. У бумаги с наибольшим фактором самый большой ранг
     signals_rank = long_prob_minus_short_prob.rank(axis=1, ascending=False, pct=False)
@@ -98,6 +150,13 @@ def run_backtest():
         backtest_metrics,
         project_path.as_posix() + "/artifacts/metrics/backtest_metrics.json",
     )
+
+    # сохраняем метрики Intra-portfolio correlation (IPC)
+    ipc = calculate_ipc_dynamics(size, backtest_data.Close, name="portfolio")
+
+    with open(project_path.as_posix() + "/artifacts/metrics/portfolio_ipc.json", 'w') as f:
+        json.dump({"mean_snp500_ipc": round(ipc, 4)}, f, indent=4)
+
 
 
 if __name__ == "__main__":
